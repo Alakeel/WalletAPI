@@ -1,0 +1,103 @@
+{
+	"info": {
+		"_postman_id": "5391fd89-0bc2-40ac-8653-23acaba95c61",
+		"name": "Wallet endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "37711686"
+	},
+	"item": [
+		{
+			"name": "create account",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": "localhost:3000/api/wallet/account",
+				"description": "Creates a new wallet account for a user.\n\n**Response:** Returns the created account details including the userId."
+			},
+			"response": []
+		},
+		{
+			"name": "Topup",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Idempotency-Key",
+						"value": "unique-key-123"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"userId\": \"b2ca091a-0b35-4426-90c4-5bec7321bbbe\",\r\n  \"amount\": \"100.00\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://localhost:3000/api/wallet/topup",
+				"description": "Adds funds to a user's wallet.\n\n**Request Body:**\n\n``` json\n{\n    \"userId\": \"string (UUID)\",\n    \"amount\": \"number (decimal)\"\n}\n\n ```\n\n**Required Headers:**\n\n- Idempotency-Key: Unique identifier to prevent duplicate transactions"
+			},
+			"response": []
+		},
+		{
+			"name": "Get all users",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "localhost:3000/api/wallet/topup",
+				"description": "Retrieves a list of all users with wallet accounts.\n\n**Response:** Array of user objects with their wallet details."
+			},
+			"response": []
+		},
+		{
+			"name": "Get single user details",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "localhost:3000/api/wallet/topup",
+				"description": "Retrieves detailed information for a specific user.\n\n**Parameters:**\n\n- userId: UUID of the user"
+			},
+			"response": []
+		},
+		{
+			"name": "Get user balance",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "localhost:3000/api/wallet/users/4137c3f4-7858-40f9-ba36-5169987eaa1a/balance",
+				"description": "Retrieves the current balance for a specific user.\n\n**Parameters:**\n\n- userId: UUID of the user\n    \n\n**Response:** Current balance amount"
+			},
+			"response": []
+		},
+		{
+			"name": "Charge user",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"userId\": \"uuid\",\r\n  \"amount\": \"50.00\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "localhost:3000/api/wallet/charge",
+				"description": "Deducts funds from a user's wallet.\n\n**Request Body:**\n\n``` json\n{\n    \"userId\": \"string (UUID)\",\n    \"amount\": \"number (decimal)\"\n}\n\n ```\n\n**Response:** Updated balance after charge"
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "userId",
+			"value": "userId"
+		}
+	]
+}
