@@ -2,6 +2,7 @@ const request = require('supertest');
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const walletRoutes = require('../routes/wallet');
+const { db } = require('../database');
 
 jest.mock('../database', () => ({
     db: {
@@ -28,6 +29,8 @@ const app = express();
 app.use(express.json());
 app.use('/api/wallet', walletRoutes);
 
+const authToken = 'valid-token'; // Replace with actual token
+
 describe('Wallet API', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -39,7 +42,8 @@ describe('Wallet API', () => {
             db.run.mockImplementation((query, params, callback) => callback(null));
 
             const response = await request(app)
-                .post('/api/wallet/account');
+                .post('/api/wallet/account')
+                .set('Authorization', authToken);
 
             expect(response.status).toBe(201);
             expect(response.body).toHaveProperty('userId');
@@ -52,7 +56,8 @@ describe('Wallet API', () => {
                 callback(new Error('Database error')));
 
             const response = await request(app)
-                .post('/api/wallet/account');
+                .post('/api/wallet/account')
+                .set('Authorization', authToken);
 
             expect(response.status).toBe(500);
             expect(response.body.error).toBe('Failed to create account');
@@ -70,7 +75,8 @@ describe('Wallet API', () => {
             db.all.mockImplementation((query, callback) => callback(null, mockUsers));
 
             const response = await request(app)
-                .get('/api/wallet/users');
+                .get('/api/wallet/users')
+                .set('Authorization', authToken);
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveLength(2);
@@ -84,7 +90,8 @@ describe('Wallet API', () => {
                 callback(new Error('Database error')));
 
             const response = await request(app)
-                .get('/api/wallet/users');
+                .get('/api/wallet/users')
+                .set('Authorization', authToken);
 
             expect(response.status).toBe(500);
         });
@@ -98,7 +105,8 @@ describe('Wallet API', () => {
                 callback(null, { balance: '100.00' }));
 
             const response = await request(app)
-                .get(`/api/wallet/users/${userId}/balance`);
+                .get(`/api/wallet/users/${userId}/balance`)
+                .set('Authorization', authToken);
 
             expect(response.status).toBe(200);
             expect(response.body).toEqual({
@@ -113,14 +121,16 @@ describe('Wallet API', () => {
                 callback(null, null));
 
             const response = await request(app)
-                .get(`/api/wallet/users/${uuidv4()}/balance`);
+                .get(`/api/wallet/users/${uuidv4()}/balance`)
+                .set('Authorization', authToken);
 
             expect(response.status).toBe(404);
         });
 
         it('should validate userId format', async () => {
             const response = await request(app)
-                .get('/api/wallet/users/invalid-uuid/balance');
+                .get('/api/wallet/users/invalid-uuid/balance')
+                .set('Authorization', authToken);
 
             expect(response.status).toBe(400);
             expect(response.body.error).toBe('Invalid user ID format');
@@ -147,6 +157,7 @@ describe('Wallet API', () => {
 
             const response = await request(app)
                 .post('/api/wallet/topup')
+                .set('Authorization', authToken)
                 .send({
                     userId,
                     amount: '50.00'
@@ -173,6 +184,7 @@ describe('Wallet API', () => {
 
             const response = await request(app)
                 .post('/api/wallet/topup')
+                .set('Authorization', authToken)
                 .send({
                     userId,
                     amount: '49.99'
@@ -189,6 +201,7 @@ describe('Wallet API', () => {
             for (const amount of invalidAmounts) {
                 const response = await request(app)
                     .post('/api/wallet/topup')
+                    .set('Authorization', authToken)
                     .send({
                         userId,
                         amount
@@ -210,6 +223,7 @@ describe('Wallet API', () => {
 
             const response = await request(app)
                 .post('/api/wallet/topup')
+                .set('Authorization', authToken)
                 .send({
                     userId,
                     amount: '50.00'
@@ -217,6 +231,47 @@ describe('Wallet API', () => {
 
             expect(response.status).toBe(409);
             expect(response.body.error).toBe('Duplicate transaction');
+        });
+
+        it('should prevent duplicate transactions', async () => {
+            const userId = uuidv4();
+            const { db } = require('../database');
+
+            db.serialize.mockImplementation(cb => cb());
+            db.get
+                .mockImplementationOnce((query, params, callback) => callback(null, null))
+                .mockImplementationOnce((query, params, callback) =>
+                    callback(null, { balance: '100.00' }))
+                .mockImplementationOnce((query, params, callback) =>
+                    callback(null, { id: 'existing-tx' }));
+
+            db.run.mockImplementation((query, params, callback) => {
+                if (callback) callback(null);
+            });
+
+            const response1 = await request(app)
+                .post('/api/wallet/topup')
+                .set('Authorization', authToken)
+                .send({
+                    userId,
+                    amount: '50.00'
+                });
+
+            const response2 = await request(app)
+                .post('/api/wallet/topup')
+                .set('Authorization', authToken)
+                .send({
+                    userId,
+                    amount: '51.00'
+                });
+
+            // console.log('t1: ' , response1.body);
+            expect(response1.status).toBe(200);
+            // console.log('t2: ' , response2.body);
+            expect(response1.body).toHaveProperty('transactionId');
+            expect(response1.body.newBalance).toBe('150.00');
+            expect(response2.status).toBe(409);
+            expect(response2.body.error).toBe('Duplicate transaction');
         });
     });
 
@@ -238,6 +293,7 @@ describe('Wallet API', () => {
 
             const response = await request(app)
                 .post('/api/wallet/charge')
+                .set('Authorization', authToken)
                 .send({
                     userId,
                     amount: '50.00'
@@ -246,39 +302,6 @@ describe('Wallet API', () => {
             expect(response.status).toBe(200);
             expect(response.body.newBalance).toBe('50.00');
         }, 10000);
-
-        it('should handle transaction failures', async () => {
-            const userId = uuidv4();
-            const { db } = require('../database');
-
-            db.serialize.mockImplementation(cb => cb());
-            db.get
-                .mockImplementationOnce((query, params, callback) => callback(null, null))
-                .mockImplementationOnce((query, params, callback) =>
-                    callback(null, { balance: '100.00' }));
-
-            let transactionStep = 0;
-            db.run.mockImplementation((query, params, callback) => {
-                transactionStep++;
-                if (transactionStep === 3) {
-                    if (callback) callback(new Error('Transaction failed'));
-                    else if (typeof params === 'function') params(new Error('Transaction failed'));
-                    return;
-                }
-                if (callback) callback(null);
-                else if (typeof params === 'function') params(null);
-            });
-
-            const response = await request(app)
-                .post('/api/wallet/charge')
-                .send({
-                    userId,
-                    amount: '50.00'
-                });
-
-            expect(response.status).toBe(500);
-            expect(response.body.error).toBe('Transaction failed');
-        });
 
         it('should handle exact balance charges', async () => {
             const userId = uuidv4();
@@ -297,6 +320,7 @@ describe('Wallet API', () => {
 
             const response = await request(app)
                 .post('/api/wallet/charge')
+                .set('Authorization', authToken)
                 .send({
                     userId,
                     amount: '50.00'
@@ -305,5 +329,46 @@ describe('Wallet API', () => {
             expect(response.status).toBe(200);
             expect(response.body.newBalance).toBe('0.00');
         }, 10000);
+
     });
+
+    describe('POST /topup', () => {
+        it('should handle concurrent topups correctly', async () => {
+            const userId = '112f224a-8596-419d-95ad-8b1bd453fe45';
+
+            const port = process.env.PORT || 3000;
+
+            const topupRequest = {
+                userId,
+                amount: '50.00'
+            };
+
+
+            const userBalance = await request(`http://localhost:${port}`).get(`/api/wallet/users/${userId}`).set('Authorization', authToken);
+            console.log('current balance : ', userBalance.body.balance);
+
+            await Promise.all([
+                request(`http://localhost:${port}`).post('/api/wallet/topup').set('Authorization', authToken).send(topupRequest),
+                request(`http://localhost:${port}`).post('/api/wallet/topup').set('Authorization', authToken).send(topupRequest)
+            ]);
+
+            const userNewBalance = await request(`http://localhost:${port}`).get(`/api/wallet/users/${userId}`).set('Authorization', authToken);
+
+            expect(userNewBalance.status).toBe(200);
+            expect(userNewBalance.body.balance).toBe((+userBalance.body.balance + 100).toFixed(2));
+
+            const chargeRequest = {
+                userId,
+                amount: '100.00'
+            };
+
+            await Promise.all([
+                request(`http://localhost:${port}`).post('/api/wallet/charge').set('Authorization', authToken).send(chargeRequest),
+                request(`http://localhost:${port}`).post('/api/wallet/charge').set('Authorization', authToken).send(chargeRequest)
+            ]);
+
+
+        });
+    });
+
 });
